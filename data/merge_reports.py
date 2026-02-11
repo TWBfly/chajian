@@ -55,7 +55,19 @@ def merge_markdown_files():
     with open(output_file, 'w', encoding='utf-8') as f:
         f.writelines(merged_content)
     
+
     print(f"合并完成！已生成文件: {output_file}")
+    
+    # 自动执行贝叶斯分析
+    try:
+        from analyze_report import analyze_report
+        print("正在执行贝叶斯分析...")
+        analyze_report(output_file)
+    except ImportError:
+        print("未找到 analyze_report.py，跳过分析步骤。")
+    except Exception as e:
+        print(f"分析过程中出错: {e}")
 
 if __name__ == "__main__":
     merge_markdown_files()
+
