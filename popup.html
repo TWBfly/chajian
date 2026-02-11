@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>表格下载器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 350px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        h1 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 16px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f2f5;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e4e6e9;
+        }
+
+        .status {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .status.success {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            display: block;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.loading {
+            display: block;
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .table-list {
+            margin-top: 16px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .table-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .table-item:hover {
+            background: #e9ecef;
+        }
+
+        .table-item input[type="checkbox"] {
+            margin-right: 10px;
+        }
+
+        .table-info {
+            flex: 1;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .quick-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .tag {
+            padding: 4px 10px;
+            background: #eef2ff;
+            color: #4f46e5;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            border: 1px solid #e0e7ff;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .tag:hover {
+            background: #e0e7ff;
+            transform: translateY(-1px);
+        }
+
+        .tips {
+            margin-top: 12px;
+            font-size: 11px;
+            color: #888;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📊 表格数据下载器</h1>
+
+        <div class="form-group">
+            <label for="filename">文件名（不含扩展名）</label>
+            <input type="text" id="filename" placeholder="输入保存的文件名" value="table_data">
+        </div>
+
+        <div class="form-group">
+            <label for="selector">表格选择器（可选）</label>
+            <input type="text" id="selector" placeholder="CSS选择器，如：.zyzb_table">
+        </div>
+
+        <div class="quick-tags">
+            <span class="tag" data-file="财务zyzb_table" data-selector="zyzb_table">财务指标</span>
+            <span class="tag" data-file="利润表lrb_table" data-selector="lrb_table">利润表</span>
+            <span class="tag" data-file="现金流xjllb_table" data-selector="xjllb_table">现金流</span>
+            <span class="tag" data-file="资产负债表zcfzb_table" data-selector="zcfzb_table">资产负债表</span>
+            <span class="tag" data-file="分红sectionfhrzgl" data-selector="section.fhrzgl">分红</span>
+            <span class="tag" data-file="成长性sectionczxbj" data-selector="section.czxbj">成长性</span>
+            <span class="tag" data-file="估值比较sectiongzbj" data-selector="section.gzbj">估值比较</span>
+            <span class="tag" data-file="杜邦分析sectiondbfxbj" data-selector="section.dbfxbj">杜邦分析</span>
+        </div>
+
+        <button class="btn btn-secondary" id="detectBtn">🔍 检测表格</button>
+        <button class="btn btn-primary" id="downloadBtn">⬇️ 下载为 Markdown</button>
+
+        <div class="table-list" id="tableList"></div>
+
+        <div class="status" id="status"></div>
+
+        <p class="tips">💡 插件会自动等待表格数据加载完成后再下载</p>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>

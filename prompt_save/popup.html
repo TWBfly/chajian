@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt Manager</title>
+    <link rel="stylesheet" href="popup.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Prompt Manager</h1>
+            <button id="add-btn" class="primary-btn" title="Add New Prompt">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                New
+            </button>
+        </header>
+
+        <div class="search-bar">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M21 21L16.65 16.65" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+            </svg>
+            <input type="text" id="search-input" placeholder="Search prompts...">
+        </div>
+
+        <div class="tags-container">
+            <div id="tag-filters" class="tag-list">
+                <!-- Tag filters injected here -->
+            </div>
+            <button id="manage-tags-btn" class="icon-btn" title="Manage Tags">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                    <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+            </button>
+        </div>
+
+        <div id="prompt-list" class="prompt-list">
+            <!-- Prompts will be injected here -->
+            <div class="empty-state" id="empty-state">
+                <p>No prompts yet. Create one!</p>
+            </div>
+        </div>
+
+        <!-- Hidden Modal for Adding/Editing -->
+        <div id="modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modal-title">New Prompt</h2>
+                    <button id="close-modal" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="prompt-title">Title</label>
+                        <input type="text" id="prompt-title" placeholder="e.g., Coding Assistant">
+                    </div>
+                    <div class="form-group">
+                        <label>Tags</label>
+                        <div id="modal-tags" class="tag-selection">
+                            <!-- Selectable tags injected here -->
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="prompt-content">Prompt</label>
+                        <textarea id="prompt-content" placeholder="Enter your prompt text here..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="cancel-btn" class="secondary-btn">Cancel</button>
+                    <button id="save-btn" class="primary-btn">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden Modal for Managing Tags -->
+        <div id="tags-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title">Manage Tags</h2>
+                    <button id="close-tags-modal" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group link-input">
+                        <input type="text" id="new-tag-input" placeholder="New tag name">
+                        <button id="add-tag-btn" class="primary-btn">Add</button>
+                    </div>
+                    <div id="manage-tags-list" class="manage-tags-list">
+                        <!-- Tags list for deletion -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="toast hidden">Copied to clipboard!</div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+
+</html>
