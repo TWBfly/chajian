@@ -131,13 +131,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Tags Logic ---
 
+    let draggedTagIndex = null;
+
     function renderTagFilters() {
         tagFiltersContainer.innerHTML = '';
-        tags.forEach(tag => {
+        tags.forEach((tag, index) => {
             const chip = document.createElement('div');
             chip.className = `tag-chip ${selectedFilterTags.has(tag) ? 'selected' : ''}`;
             chip.textContent = tag;
-            chip.addEventListener('click', () => {
+            chip.draggable = true;
+
+            // Click handler
+            chip.addEventListener('click', (e) => {
+                if (chip.classList.contains('dragging')) return;
+                
                 if (selectedFilterTags.has(tag)) {
                     selectedFilterTags.delete(tag);
                 } else {
@@ -146,8 +153,70 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderTagFilters();
                 renderPrompts();
             });
+
+            // Drag handlers
+            chip.addEventListener('dragstart', (e) => {
+                draggedTagIndex = index;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', tag);
+                setTimeout(() => chip.classList.add('dragging'), 0);
+            });
+
+            chip.addEventListener('dragend', () => {
+                draggedTagIndex = null;
+                chip.classList.remove('dragging');
+                document.querySelectorAll('.tag-chip').forEach(el => el.classList.remove('drag-over'));
+            });
+
+            chip.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                return false;
+            });
+            
+            chip.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                if (draggedTagIndex !== null && draggedTagIndex !== index) {
+                    chip.classList.add('drag-over');
+                }
+            });
+
+            chip.addEventListener('dragleave', (e) => {
+                 chip.classList.remove('drag-over');
+            });
+
+            chip.addEventListener('drop', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                
+                if (draggedTagIndex !== null && draggedTagIndex !== index) {
+                    const tagToMove = tags[draggedTagIndex];
+                    tags.splice(draggedTagIndex, 1);
+                    tags.splice(index, 0, tagToMove);
+                    
+                    renderTagFilters();
+                    updateLocalCache();
+                    syncTagReorder();
+                }
+                return false;
+            });
+
             tagFiltersContainer.appendChild(chip);
         });
+    }
+
+    async function syncTagReorder() {
+        if (isOnline) {
+             try {
+                await fetch(`${API_BASE}/tags/reorder`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderedTags: tags })
+                });
+            } catch (e) {
+                console.error('Error syncing tag order', e);
+            }
+        }
     }
 
     function renderModalTags() {

@@ -24,7 +24,8 @@ def init_db():
     # Create tags table for managing global tags list
     c.execute('''
         CREATE TABLE IF NOT EXISTS tags (
-            name TEXT PRIMARY KEY
+            name TEXT PRIMARY KEY,
+            order_index INTEGER DEFAULT 0
         )
     ''')
     

@@ -142,13 +142,29 @@ textarea:focus {
   border-radius: 12px;
   background-color: var(--tag-bg);
   color: var(--tag-text);
-  cursor: pointer;
-  transition: background-color 0.2s, color 0.2s;
+  cursor: grab;
+  transition: background-color 0.2s, color 0.2s, transform 0.1s;
   border: 1px solid transparent;
+}
+
+.tag-chip:active {
+  cursor: grabbing;
 }
 
 .tag-chip:hover {
   background-color: #d1d5db;
+}
+
+.tag-chip.dragging {
+  opacity: 0.5;
+  border: 1px dashed var(--primary-color);
+  background-color: #f3f4f6;
+}
+
+.tag-chip.drag-over {
+  border: 1px solid var(--primary-color);
+  transform: scale(1.05);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
 }
 
 .tag-chip.selected {

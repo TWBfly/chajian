@@ -16,9 +16,19 @@ else:
         conn.execute('ALTER TABLE prompts ADD COLUMN order_index INTEGER DEFAULT 0')
         conn.commit()
         conn.close()
-        print("Migrated: Added order_index column")
+        print("Migrated: Added order_index column to prompts")
     except sqlite3.OperationalError:
         # Column likely already exists
+        pass
+
+    # Migration check: Ensure order_index exists in tags
+    try:
+        conn = sqlite3.connect('prompts.db')
+        conn.execute('ALTER TABLE tags ADD COLUMN order_index INTEGER DEFAULT 0')
+        conn.commit()
+        conn.close()
+        print("Migrated: Added order_index column to tags")
+    except sqlite3.OperationalError:
         pass
 
 def add_cors_headers(response):
@@ -118,9 +128,21 @@ def delete_prompt(id):
 @app.route('/api/tags', methods=['GET'])
 def get_tags():
     conn = get_db_connection()
-    tags = conn.execute('SELECT name FROM tags ORDER BY name').fetchall()
+    tags = conn.execute('SELECT name FROM tags ORDER BY order_index ASC, name ASC').fetchall()
     conn.close()
     return jsonify([t['name'] for t in tags])
+
+@app.route('/api/tags/reorder', methods=['POST'])
+def reorder_tags():
+    data = request.json
+    ordered_tags = data.get('orderedTags', [])
+    
+    conn = get_db_connection()
+    for idx, tag_name in enumerate(ordered_tags):
+        conn.execute('UPDATE tags SET order_index = ? WHERE name = ?', (idx, tag_name))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Reordered successfully'})
 
 @app.route('/api/tags', methods=['POST'])
 def add_tag():
@@ -131,7 +153,11 @@ def add_tag():
         
     conn = get_db_connection()
     try:
-        conn.execute('INSERT OR IGNORE INTO tags (name) VALUES (?)', (tag_name,))
+        # Get current max order_index to append to end
+        max_order = conn.execute('SELECT MAX(order_index) FROM tags').fetchone()[0]
+        new_order = (max_order if max_order is not None else -1) + 1
+        
+        conn.execute('INSERT OR IGNORE INTO tags (name, order_index) VALUES (?, ?)', (tag_name, new_order))
         conn.commit()
         return jsonify({'name': tag_name}), 201
     finally:
