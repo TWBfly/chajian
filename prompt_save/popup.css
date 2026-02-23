@@ -281,6 +281,24 @@ textarea:focus {
   background-color: #fee2e2;
 }
 
+.sort-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 2px;
+  border-radius: 4px;
+  transition: color 0.2s, background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sort-btn:hover {
+  background-color: var(--bg-color);
+  color: var(--primary-color);
+}
+
 .card-preview {
   font-size: 0.85rem;
   color: var(--text-secondary);

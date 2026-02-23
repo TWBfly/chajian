@@ -29,6 +29,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let editingId = null;
     let selectedFilterTags = new Set();
     let selectedModalTags = new Set();
+    
+    // API Configuration
+    const API_BASE = 'http://localhost:5002/api';
+    let isOnline = false;
 
     // Load data
     loadData();
@@ -46,21 +50,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Functions
 
-    function loadData() {
-        chrome.storage.local.get(['prompts', 'tags'], (result) => {
-            if (result.prompts) prompts = result.prompts;
-            if (result.tags) tags = result.tags;
+    async function loadData() {
+        try {
+            // Try fetching from server first
+            const [promptsRes, tagsRes] = await Promise.all([
+                fetch(`${API_BASE}/prompts`).catch(e => null),
+                fetch(`${API_BASE}/tags`).catch(e => null)
+            ]);
 
-            renderTagFilters();
-            renderPrompts();
+            if (promptsRes && promptsRes.ok && tagsRes && tagsRes.ok) {
+                prompts = await promptsRes.json();
+                tags = await tagsRes.json();
+                isOnline = true;
+                
+                // Check if we need to migrate local data to server
+                checkMigration();
+            } else {
+                throw new Error('Server unreachable');
+            }
+        } catch (e) {
+            console.log('Offline mode:', e);
+            isOnline = false;
+            // Fallback to local storage
+            chrome.storage.local.get(['prompts', 'tags'], (result) => {
+                if (result.prompts) prompts = result.prompts;
+                if (result.tags) tags = result.tags;
+                renderTagFilters();
+                renderPrompts();
+            });
+            return;
+        }
+
+        renderTagFilters();
+        renderPrompts();
+        // Update local cache
+        updateLocalCache();
+    }
+    
+    function checkMigration() {
+        chrome.storage.local.get(['prompts', 'tags'], (result) => {
+            const localPrompts = result.prompts || [];
+            const localTags = result.tags || [];
+            
+            // If server is empty but we have local data, sync it
+            if ((prompts.length === 0 && localPrompts.length > 0) || 
+                (tags.length === 0 && localTags.length > 0)) {
+                syncToServer(localPrompts, localTags);
+            }
         });
     }
+    
+    async function syncToServer(localPrompts, localTags) {
+        try {
+            const res = await fetch(`${API_BASE}/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompts: localPrompts, tags: localTags })
+            });
+            if (res.ok) {
+                showToast('Migrated data to database!');
+                // Reload to get merged data
+                const [promptsRes, tagsRes] = await Promise.all([
+                    fetch(`${API_BASE}/prompts`),
+                    fetch(`${API_BASE}/tags`)
+                ]);
+                prompts = await promptsRes.json();
+                tags = await tagsRes.json();
+                renderTagFilters();
+                renderPrompts();
+                updateLocalCache();
+            }
+        } catch (e) {
+            console.error('Migration failed', e);
+        }
+    }
 
-    function saveData() {
-        chrome.storage.local.set({ prompts: prompts, tags: tags }, () => {
-            renderPrompts();
-            renderTagFilters(); // Re-render in case tags changed
-        });
+    function updateLocalCache() {
+        chrome.storage.local.set({ prompts: prompts, tags: tags });
     }
 
     // --- Tags Logic ---
@@ -137,18 +203,42 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function addNewTag() {
+    async function addNewTag() {
         const tagName = newTagInput.value.trim();
         if (tagName && !tags.includes(tagName)) {
+            if (isOnline) {
+                try {
+                    const res = await fetch(`${API_BASE}/tags`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: tagName })
+                    });
+                    if (!res.ok) throw new Error('Failed to add tag');
+                } catch (e) {
+                    alert('Error saving to database: ' + e.message);
+                    return;
+                }
+            }
+            
             tags.push(tagName);
-            saveData();
+            updateLocalCache();
             renderManageTagsList();
             newTagInput.value = '';
         }
     }
 
-    function deleteTag(tagToDelete) {
+    async function deleteTag(tagToDelete) {
         if (confirm(`Delete tag "${tagToDelete}"?`)) {
+            if (isOnline) {
+                try {
+                    await fetch(`${API_BASE}/tags/${encodeURIComponent(tagToDelete)}`, {
+                        method: 'DELETE'
+                    });
+                } catch (e) {
+                    console.error('Error deleting tag from server', e);
+                }
+            }
+            
             tags = tags.filter(t => t !== tagToDelete);
             // Remove this tag from all prompts
             prompts.forEach(p => {
@@ -160,7 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Remove from selection if present
             if (selectedFilterTags.has(tagToDelete)) selectedFilterTags.delete(tagToDelete);
 
-            saveData(); // Save both tags and prompts
+            updateLocalCache();
             renderManageTagsList();
         }
     }
@@ -172,13 +262,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const filterText = searchInput.value.toLowerCase();
         promptList.innerHTML = '';
 
-        const filteredPrompts = prompts.filter(p => {
+        let filteredPrompts = prompts.filter(p => {
             const matchesText = p.title.toLowerCase().includes(filterText) || p.content.toLowerCase().includes(filterText);
-
-            // Tag filter: if no tags selected, show all. If selected, prompt must have AT LEAST ONE of the selected tags (OR logic)
-            // Or strict AND logic? Usually filtering is AND if you select multiple features, but for tags OR is common too.
-            // Let's go with: Show prompt if it contains ALL selected tags (AND logic).
-
+            
             let matchesTags = true;
             if (selectedFilterTags.size > 0) {
                 const promptTags = new Set(p.tags || []);
@@ -191,21 +277,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             return matchesText && matchesTags;
-        }).sort((a, b) => (b.copyCount || 0) - (a.copyCount || 0)); // Sort by copyCount desc
+        });
+
+        // Sort by orderIndex ASC, then updated_at DESC
+        filteredPrompts.sort((a, b) => {
+            const orderA = a.orderIndex !== undefined ? a.orderIndex : 0;
+            const orderB = b.orderIndex !== undefined ? b.orderIndex : 0;
+            if (orderA !== orderB) return orderA - orderB;
+            return b.updatedAt - a.updatedAt;
+        });
 
         if (filteredPrompts.length === 0) {
             promptList.appendChild(emptyState);
             emptyState.style.display = 'block';
         } else {
             emptyState.style.display = 'none';
-            filteredPrompts.forEach(prompt => {
-                const card = createPromptCard(prompt);
+            filteredPrompts.forEach((prompt, index) => {
+                const isFirst = index === 0;
+                const isLast = index === filteredPrompts.length - 1;
+                const card = createPromptCard(prompt, isFirst, isLast);
                 promptList.appendChild(card);
             });
         }
     }
 
-    function createPromptCard(prompt) {
+    function createPromptCard(prompt, isFirst, isLast) {
         const div = document.createElement('div');
         div.className = 'prompt-card';
         div.dataset.id = prompt.id;
@@ -221,6 +317,12 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="card-header">
                 <h3 class="card-title">${escapeHtml(prompt.title)}</h3>
                 <div class="card-actions">
+                    <button class="sort-btn up" title="Move Up" ${isFirst ? 'disabled' : ''} style="${isFirst ? 'visibility:hidden' : ''}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                    </button>
+                    <button class="sort-btn down" title="Move Down" ${isLast ? 'disabled' : ''} style="${isLast ? 'visibility:hidden' : ''}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
                     <button class="icon-btn edit" title="Edit">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     </button>
@@ -236,9 +338,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Click on card to copy (exclude actions)
         div.addEventListener('click', (e) => {
             if (!e.target.closest('.card-actions')) {
-                // Increment copy count
-                prompt.copyCount = (prompt.copyCount || 0) + 1;
-                saveData(); // Persist and re-render (which re-sorts)
                 copyToClipboard(prompt.content);
             }
         });
@@ -257,7 +356,88 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        // Sort buttons
+        div.querySelector('.sort-btn.up').addEventListener('click', (e) => {
+            e.stopPropagation();
+            movePromptUp(prompt.id);
+        });
+
+        div.querySelector('.sort-btn.down').addEventListener('click', (e) => {
+            e.stopPropagation();
+            movePromptDown(prompt.id);
+        });
+
         return div;
+    }
+
+    async function movePromptUp(promptId) {
+        // Find index in current sorted view (but we need to operate on the main 'prompts' array)
+        // Actually, we should sort the 'prompts' array to match the view, or find the item in 'prompts'.
+        // To simplify, let's assume 'prompts' is kept sorted or we sort it before swapping.
+        
+        // Sort prompts first to ensure we swap correctly based on current order
+        prompts.sort((a, b) => {
+            const orderA = a.orderIndex !== undefined ? a.orderIndex : 0;
+            const orderB = b.orderIndex !== undefined ? b.orderIndex : 0;
+            if (orderA !== orderB) return orderA - orderB;
+            return b.updatedAt - a.updatedAt;
+        });
+
+        const index = prompts.findIndex(p => p.id === promptId);
+        if (index > 0) {
+            // Swap orderIndex with the one above
+            const prevIndex = index - 1;
+            
+            // Just swapping their positions in array is not enough, we need to swap their orderIndex.
+            // But if they have same orderIndex (unlikely if unique), we just swap values.
+            // Better: re-assign orderIndex based on new array position.
+            
+            // Swap in array
+            [prompts[index], prompts[prevIndex]] = [prompts[prevIndex], prompts[index]];
+            
+            // Re-assign order indices for all (or just affected)
+            // To be robust, let's re-assign for the whole list or send the new order of IDs to server.
+            await syncReorder();
+        }
+    }
+
+    async function movePromptDown(promptId) {
+        prompts.sort((a, b) => {
+            const orderA = a.orderIndex !== undefined ? a.orderIndex : 0;
+            const orderB = b.orderIndex !== undefined ? b.orderIndex : 0;
+            if (orderA !== orderB) return orderA - orderB;
+            return b.updatedAt - a.updatedAt;
+        });
+
+        const index = prompts.findIndex(p => p.id === promptId);
+        if (index < prompts.length - 1) {
+            const nextIndex = index + 1;
+            [prompts[index], prompts[nextIndex]] = [prompts[nextIndex], prompts[index]];
+            await syncReorder();
+        }
+    }
+
+    async function syncReorder() {
+        // Update local orderIndex based on array position
+        prompts.forEach((p, idx) => {
+            p.orderIndex = idx;
+        });
+
+        renderPrompts(); // Optimistic update
+        updateLocalCache();
+
+        if (isOnline) {
+            try {
+                const orderedIds = prompts.map(p => p.id);
+                await fetch(`${API_BASE}/prompts/reorder`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderedIds })
+                });
+            } catch(e) {
+                console.error('Reorder sync failed', e);
+            }
+        }
     }
 
     function openModal(prompt = null) {
@@ -283,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.add('hidden');
     }
 
-    function savePrompt() {
+    async function savePrompt() {
         const title = promptTitleInput.value.trim();
         const content = promptContentInput.value.trim();
         const promptTags = Array.from(selectedModalTags);
@@ -293,39 +473,97 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        let promptData;
+
         if (editingId) {
             // Update existing
             const index = prompts.findIndex(p => p.id === editingId);
             if (index !== -1) {
-                prompts[index] = {
+                promptData = {
                     ...prompts[index],
                     title,
                     content,
                     tags: promptTags,
                     updatedAt: Date.now()
                 };
+                
+                if (isOnline) {
+                    try {
+                        await fetch(`${API_BASE}/prompts/${editingId}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(promptData)
+                        });
+                    } catch(e) {
+                         alert('Error saving to database: ' + e.message);
+                         return;
+                    }
+                }
+                
+                prompts[index] = promptData;
             }
         } else {
-            // Create new
-            const newPrompt = {
+            promptData = {
                 id: Date.now().toString(),
                 title,
                 content,
                 tags: promptTags,
-                copyCount: 0,
                 createdAt: Date.now(),
                 updatedAt: Date.now()
             };
-            prompts.unshift(newPrompt); // Add to top
+            
+            if (isOnline) {
+                try {
+                    const res = await fetch(`${API_BASE}/prompts`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(promptData)
+                    });
+                    if (res.ok) {
+                        const savedData = await res.json();
+                        promptData.orderIndex = savedData.orderIndex;
+                    }
+                } catch(e) {
+                     alert('Error saving to database: ' + e.message);
+                     return;
+                }
+            }
+            
+            // If offline or failed to get orderIndex, set a temporary one
+            if (promptData.orderIndex === undefined) {
+                 const minOrder = prompts.length > 0 ? Math.min(...prompts.map(p => p.orderIndex || 0)) : 0;
+                 promptData.orderIndex = minOrder - 1;
+            }
+
+            prompts.unshift(promptData); // Add to top
+            // Sort to ensure consistency
+            prompts.sort((a, b) => {
+                const orderA = a.orderIndex !== undefined ? a.orderIndex : 0;
+                const orderB = b.orderIndex !== undefined ? b.orderIndex : 0;
+                if (orderA !== orderB) return orderA - orderB;
+                return b.updatedAt - a.updatedAt;
+            });
         }
 
-        saveData();
+        updateLocalCache();
         closeModal();
+        renderPrompts();
     }
 
-    function deletePrompt(id) {
+    async function deletePrompt(id) {
+        if (isOnline) {
+            try {
+                await fetch(`${API_BASE}/prompts/${id}`, {
+                    method: 'DELETE'
+                });
+            } catch(e) {
+                console.error('Error deleting from server', e);
+            }
+        }
+        
         prompts = prompts.filter(p => p.id !== id);
-        saveData();
+        updateLocalCache();
+        renderPrompts();
     }
 
     function copyToClipboard(text) {
